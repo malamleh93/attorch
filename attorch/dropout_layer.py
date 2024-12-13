@@ -2,7 +2,6 @@
 Dropout layer with PyTorch autodiff support.
 """
 
-
 import warnings
 from random import randint
 from typing import Optional, Tuple
@@ -21,14 +20,15 @@ class DropoutAutoGrad(torch.autograd.Function):
     """
     Autodiff for dropout.
     """
+
     @staticmethod
-    @custom_fwd(device_type='cuda')
+    @custom_fwd(device_type="cuda")
     def forward(
         ctx: Context,
         input: Tensor,
         drop_p: float,
         training: bool,
-        ) -> Tensor:
+    ) -> Tensor:
         """
         Randomly zeroes elements in the input.
 
@@ -63,18 +63,17 @@ class DropoutAutoGrad(torch.autograd.Function):
 
         # Launches 1D grid where each program operates over
         # BLOCK_SIZE elements.
-        grid = lambda META: (cdiv(size, META['BLOCK_SIZE']),)
-        dropout_forward_kernel[grid](flattened_input, output,
-                                     size, drop_p, seed)
+        grid = lambda META: (cdiv(size, META["BLOCK_SIZE"]),)
+        dropout_forward_kernel[grid](flattened_input, output, size, drop_p, seed)
 
         return output.view_as(input)
 
     @staticmethod
-    @custom_bwd(device_type='cuda')
+    @custom_bwd(device_type="cuda")
     def backward(
         ctx: Context,
         output_grad: Tensor,
-        ) -> Tuple[Optional[Tensor], ...]:
+    ) -> Tuple[Optional[Tensor], ...]:
         """
         Calculates the input gradient of dropout.
 
@@ -99,9 +98,10 @@ class DropoutAutoGrad(torch.autograd.Function):
 
         # Launches 1D grid where each program operates over
         # BLOCK_SIZE elements.
-        grid = lambda META: (cdiv(size, META['BLOCK_SIZE']),)
-        dropout_backward_kernel[grid](output_grad, input_grad,
-                                      size, ctx.drop_p, ctx.seed)
+        grid = lambda META: (cdiv(size, META["BLOCK_SIZE"]),)
+        dropout_backward_kernel[grid](
+            output_grad, input_grad, size, ctx.drop_p, ctx.seed
+        )
 
         # Pads output with None because a gradient is necessary for
         # all input arguments.
@@ -118,12 +118,15 @@ class Dropout(nn.Dropout):
         inplace: This is a dummy argument and has no effects,
             as in-place is currently not supported.
     """
+
     def __init__(self, p: float = 0.5, inplace: bool = False) -> None:
         super().__init__(p=p, inplace=False)
 
         if inplace is True:
-            warnings.warn('In-place dropout currently not supported; '
-                          'falling back to out-of-place.')
+            warnings.warn(
+                "In-place dropout currently not supported; "
+                "falling back to out-of-place."
+            )
 
     def forward(self, input: Tensor) -> Tensor:
         return DropoutAutoGrad.apply(input, self.p, self.training)

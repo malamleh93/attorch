@@ -2,7 +2,6 @@
 p-norm-induced losses with PyTorch autodiff support.
 """
 
-
 from typing import Optional, Tuple
 
 import torch
@@ -19,6 +18,7 @@ class PLossAutoGrad(torch.autograd.Function):
     """
     Autodiff for p-losses.
     """
+
     @staticmethod
     def forward(
         ctx: Context,
@@ -26,7 +26,7 @@ class PLossAutoGrad(torch.autograd.Function):
         target: Tensor,
         p_loss: int,
         reduction: str,
-        ) -> Tensor:
+    ) -> Tensor:
         """
         Measures the L1 or squared L2 norm of the difference between the input
         and target (i.e., mean absolute error or mean squared error).
@@ -46,10 +46,11 @@ class PLossAutoGrad(torch.autograd.Function):
         Returns:
             Error.
         """
-        assert input.shape == target.shape, \
-            f'Input shape {input.shape} and target shape {target.shape} not equal'
+        assert (
+            input.shape == target.shape
+        ), f"Input shape {input.shape} and target shape {target.shape} not equal"
 
-        output_dtype = get_output_dtype(input.dtype, autocast='fp32')
+        output_dtype = get_output_dtype(input.dtype, autocast="fp32")
 
         ctx.p_loss = p_loss
         ctx.reduction = reduction
@@ -61,18 +62,27 @@ class PLossAutoGrad(torch.autograd.Function):
         flattened_target = target.flatten()
         size = len(flattened_input)
 
-        output = (torch.empty_like(flattened_input, dtype=output_dtype) if reduction == 'none'
-                  else torch.empty(cdiv(size, 32), dtype=output_dtype, device=input.device))
+        output = (
+            torch.empty_like(flattened_input, dtype=output_dtype)
+            if reduction == "none"
+            else torch.empty(cdiv(size, 32), dtype=output_dtype, device=input.device)
+        )
 
         # Launches 1D grid where each program operates over
         # BLOCK_SIZE elements.
-        grid = lambda META: (cdiv(size, META['BLOCK_SIZE']),)
-        p_loss_forward_kernel[grid](flattened_input, flattened_target, output,
-                                    size, p_loss=p_loss, reduction=reduction)
+        grid = lambda META: (cdiv(size, META["BLOCK_SIZE"]),)
+        p_loss_forward_kernel[grid](
+            flattened_input,
+            flattened_target,
+            output,
+            size,
+            p_loss=p_loss,
+            reduction=reduction,
+        )
 
-        if reduction != 'none':
-            BLOCK_SIZE = p_loss_forward_kernel.best_config.kwargs['BLOCK_SIZE']
-            output = output[:cdiv(size, BLOCK_SIZE)].sum()
+        if reduction != "none":
+            BLOCK_SIZE = p_loss_forward_kernel.best_config.kwargs["BLOCK_SIZE"]
+            output = output[: cdiv(size, BLOCK_SIZE)].sum()
 
         else:
             output = output.view_as(input)
@@ -83,7 +93,7 @@ class PLossAutoGrad(torch.autograd.Function):
     def backward(
         ctx: Context,
         output_grad: Tensor,
-        ) -> Tuple[Optional[Tensor], ...]:
+    ) -> Tuple[Optional[Tensor], ...]:
         """
         Calculates the input gradient of the error.
 
@@ -106,10 +116,17 @@ class PLossAutoGrad(torch.autograd.Function):
 
         # Launches 1D grid where each program operates over
         # BLOCK_SIZE elements.
-        grid = lambda META: (cdiv(size, META['BLOCK_SIZE']),)
-        p_loss_backward_kernel[grid](output_grad, flattened_input, flattened_target,
-                                     input_grad, target_grad, size,
-                                     p_loss=ctx.p_loss, reduction=ctx.reduction)
+        grid = lambda META: (cdiv(size, META["BLOCK_SIZE"]),)
+        p_loss_backward_kernel[grid](
+            output_grad,
+            flattened_input,
+            flattened_target,
+            input_grad,
+            target_grad,
+            size,
+            p_loss=ctx.p_loss,
+            reduction=ctx.reduction,
+        )
 
         # Pads output with None because a gradient is necessary for
         # all input arguments.
@@ -131,6 +148,7 @@ class L1Loss(nn.L1Loss):
         reduce: Flag for averaging or summing all the error entries instead of
             returning a loss per element.
     """
+
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         return PLossAutoGrad.apply(input, target, 1, self.reduction)
 
@@ -150,5 +168,6 @@ class MSELoss(nn.MSELoss):
         reduce: Flag for averaging or summing all the error entries instead of
             returning a loss per element.
     """
+
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         return PLossAutoGrad.apply(input, target, 2, self.reduction)

@@ -2,7 +2,6 @@
 Trains and benchmarks a vision model on the Imagenette classification dataset.
 """
 
-
 import time
 from argparse import ArgumentParser
 from functools import partial
@@ -17,13 +16,32 @@ from torch.utils.data import DataLoader
 from torchvision import transforms as T
 from torchvision.datasets import Imagenette
 
-from .convnext import convnext_tiny, convnext_small, convnext_base, \
-    convnext_large, convnext_xlarge
-from .resnet import resnet50, resnet101, resnet152
-from .vit import vit_tiny_patch16, vit_small_patch32, vit_small_patch16, vit_small_patch8, \
-    vit_base_patch32, vit_base_patch16, vit_base_patch8, \
-    vit_large_patch32, vit_large_patch16, vit_large_patch14
+from examples.imagenette import convnext
+from examples.imagenette.resnet import resnet101, resnet152, resnet50
+from examples.imagenette import vit
+
 from ..utils import AvgMeter, benchmark_fw_and_bw
+
+MODELD_DICT = {
+    "resnet50": resnet50,
+    "resnet101": resnet101,
+    "resnet152": resnet152,
+    "convnext_tiny": convnext.convnext_tiny,
+    "convnext_small": convnext.convnext_small,
+    "convnext_base": convnext.convnext_base,
+    "convnext_large": convnext.convnext_large,
+    "convnext_xlarge": convnext.convnext_xlarge,
+    "vit_tiny_patch16": vit.vit_tiny_patch16,
+    "vit_small_patch32": vit.vit_small_patch32,
+    "vit_small_patch16": vit.vit_small_patch16,
+    "vit_small_patch8": vit.vit_small_patch8,
+    "vit_base_patch32": vit.vit_base_patch32,
+    "vit_base_patch16": vit.vit_base_patch16,
+    "vit_base_patch8": vit.vit_base_patch8,
+    "vit_large_patch32": vit.vit_large_patch32,
+    "vit_large_patch16": vit.vit_large_patch16,
+    "vit_large_patch14": vit.vit_large_patch14,
+}
 
 
 def create_dls(
@@ -31,7 +49,7 @@ def create_dls(
     center_crop_size: int = 256,
     image_size: int = 224,
     num_workers: int = 4,
-    ) -> Tuple[DataLoader, DataLoader]:
+) -> Tuple[DataLoader, DataLoader]:
     """
     Creates data loaders for Imagenette with appropriate transforms.
 
@@ -47,25 +65,42 @@ def create_dls(
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
 
-    train_transform = T.Compose([T.RandomResizedCrop(image_size),
-                                 T.ToTensor(),
-                                 T.Normalize(mean=mean, std=std)])
-    valid_transform = T.Compose([T.CenterCrop(center_crop_size),
-                                 T.Resize(image_size),
-                                 T.ToTensor(),
-                                 T.Normalize(mean=mean, std=std)])
+    train_transform = T.Compose(
+        [T.RandomResizedCrop(image_size), T.ToTensor(), T.Normalize(mean=mean, std=std)]
+    )
+    valid_transform = T.Compose(
+        [
+            T.CenterCrop(center_crop_size),
+            T.Resize(image_size),
+            T.ToTensor(),
+            T.Normalize(mean=mean, std=std),
+        ]
+    )
 
-    train_dataset = Imagenette(root='.', split='train', download=not Path('imagenette2/').exists(),
-                               transform=train_transform)
-    valid_dataset = Imagenette(root='.', split='val', download=False,
-                               transform=valid_transform)
+    train_dataset = Imagenette(
+        root=".",
+        split="train",
+        download=not Path("/home/mohammad/.data/imagenet").exists(),
+        transform=train_transform,
+    )
+    valid_dataset = Imagenette(
+        root=".", split="val", download=False, transform=valid_transform
+    )
 
-    train_dl = DataLoader(dataset=train_dataset, batch_size=batch_size,
-                          shuffle=True, num_workers=num_workers,
-                          drop_last=True)
-    valid_dl = DataLoader(dataset=valid_dataset, batch_size=batch_size,
-                          shuffle=False, num_workers=num_workers,
-                          drop_last=True)
+    train_dl = DataLoader(
+        dataset=train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        drop_last=True,
+    )
+    valid_dl = DataLoader(
+        dataset=valid_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        drop_last=True,
+    )
 
     return train_dl, valid_dl
 
@@ -76,7 +111,7 @@ def train(
     valid_dl: DataLoader,
     epochs: int = 10,
     batch_size: int = 32,
-    ) -> float:
+) -> float:
     """
     Trains and validates a model for classification.
 
@@ -91,24 +126,24 @@ def train(
     Returns:
         Total training and validation time.
     """
-    model = model.to('cuda')
+    model = model.to("cuda")
     optim = AdamW(model.parameters(), lr=sqrt(batch_size / 32) * 4e-4)
     optim.zero_grad()
-    scaler = torch.GradScaler('cuda')
+    scaler = torch.GradScaler("cuda")
 
     avg_meter = AvgMeter()
     start = time.time()
 
     for epoch in range(epochs):
-        print(f'Epoch {epoch+1}/{epochs}')
+        print(f"Epoch {epoch+1}/{epochs}")
 
         model.train()
         avg_meter.reset()
         for input, target in train_dl:
-            input = input.to('cuda')
-            target = target.to('cuda')
+            input = input.to("cuda")
+            target = target.to("cuda")
 
-            with torch.autocast('cuda'):
+            with torch.autocast("cuda"):
                 loss = model(input, target)
 
             scaler.scale(loss).backward()
@@ -117,20 +152,20 @@ def train(
             optim.zero_grad()
 
             avg_meter.update(loss.item(), len(input))
-        print(f'Training loss: {avg_meter.avg}')
+        print(f"Training loss: {avg_meter.avg}")
 
         model.eval()
         avg_meter.reset()
         with torch.no_grad():
             for input, target in valid_dl:
-                input = input.to('cuda')
-                target = target.to('cuda')
+                input = input.to("cuda")
+                target = target.to("cuda")
 
-                with torch.autocast('cuda'):
+                with torch.autocast("cuda"):
                     output = model(input)
                 acc = (output.argmax(dim=-1) == target).float().mean()
                 avg_meter.update(acc.item(), len(input))
-        print(f'Validation accuracy: {avg_meter.avg}')
+        print(f"Validation accuracy: {avg_meter.avg}")
 
     return time.time() - start
 
@@ -142,7 +177,7 @@ def main(
     center_crop_size: int = 256,
     image_size: int = 224,
     num_workers: int = 4,
-    ) -> None:
+) -> None:
     """
     Trains and benchmarks a vision model on the Imagenette classification dataset.
 
@@ -155,77 +190,102 @@ def main(
         image_size: Input image size.
         num_workers: Number of workers for data loading.
     """
-    train_dl, valid_dl = create_dls(batch_size, center_crop_size, image_size, num_workers)
-    model = model_cls(num_classes=len(Imagenette._WNID_TO_CLASS)).to('cuda')
+    train_dl, valid_dl = create_dls(
+        batch_size, center_crop_size, image_size, num_workers
+    )
+    model = model_cls(num_classes=len(Imagenette._WNID_TO_CLASS)).to("cuda")
 
     input, target = next(iter(train_dl))
-    input = input.to('cuda')
-    target = target.to('cuda')
+    input = input.to("cuda")
+    target = target.to("cuda")
 
     for _ in range(10):
         model.train()
-        with torch.autocast('cuda'):
+        with torch.autocast("cuda"):
             loss = model(input, target)
         loss.backward()
 
         model.eval()
-        with torch.no_grad() and torch.autocast('cuda'):
+        with torch.no_grad() and torch.autocast("cuda"):
             model(input)
 
     model.train()
     benchmark_fw_and_bw(model, input=input, target=target)
 
-    print('Total training and validation time: '
-          f'{train(model, train_dl, valid_dl, epochs, batch_size)}')
+    print(
+        "Total training and validation time: "
+        f"{train(model, train_dl, valid_dl, epochs, batch_size)}"
+    )
 
 
-if __name__ == '__main__':
-    parser = ArgumentParser(description='Trains and benchmarks a vision model on the Imagenette classification dataset.')
-    parser.add_argument('--model',
-                        type=str,
-                        default='resnet101',
-                        choices=['resnet50', 'resnet101', 'resnet152',
-                                 'convnext_tiny', 'convnext_small',
-                                 'convnext_base', 'convnext_large',
-                                 'convnext_xlarge',
-                                 'vit_tiny_patch16',
-                                 'vit_small_patch32', 'vit_small_patch16', 'vit_small_patch8',
-                                 'vit_base_patch32', 'vit_base_patch16', 'vit_base_patch8',
-                                 'vit_large_patch32', 'vit_large_patch16', 'vit_large_patch14'],
-                        help='Name of vision model to train')
-    parser.add_argument('--epochs',
-                        type=int,
-                        default=10,
-                        help='Number of epochs to train for')
-    parser.add_argument('--batch_size',
-                        type=int,
-                        default=32,
-                        help='Batch size')
-    parser.add_argument('--center_crop_size',
-                        type=int,
-                        default=256,
-                        help='Center crop size for validation')
-    parser.add_argument('--image_size',
-                        type=int,
-                        default=224,
-                        help='Input image size')
-    parser.add_argument('--num_workers',
-                        type=int,
-                        default=4,
-                        help='Number of workers for data loading')
+if __name__ == "__main__":
+    parser = ArgumentParser(
+        description="Trains and benchmarks a vision model on the Imagenette classification dataset."
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="resnet101",
+        choices=[
+            "resnet50",
+            "resnet101",
+            "resnet152",
+            "convnext_tiny",
+            "convnext_small",
+            "convnext_base",
+            "convnext_large",
+            "convnext_xlarge",
+            "vit_tiny_patch16",
+            "vit_small_patch32",
+            "vit_small_patch16",
+            "vit_small_patch8",
+            "vit_base_patch32",
+            "vit_base_patch16",
+            "vit_base_patch8",
+            "vit_large_patch32",
+            "vit_large_patch16",
+            "vit_large_patch14",
+        ],
+        help="Name of vision model to train",
+    )
+    parser.add_argument(
+        "--epochs", type=int, default=10, help="Number of epochs to train for"
+    )
+    parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
+    parser.add_argument(
+        "--center_crop_size",
+        type=int,
+        default=256,
+        help="Center crop size for validation",
+    )
+    parser.add_argument("--image_size", type=int, default=224, help="Input image size")
+    parser.add_argument(
+        "--num_workers", type=int, default=4, help="Number of workers for data loading"
+    )
     args = parser.parse_args()
 
-    model_cls = (partial(locals()[args.model], image_size=args.image_size)
-                 if 'vit' in args.model else partial(locals()[args.model]))
+    model_cls = (
+        partial(locals()[args.model], image_size=args.image_size)
+        if "vit" in args.model
+        else partial(locals()[args.model])
+    )
 
-    print('attorch run:')
-    main(partial(model_cls, use_attorch=True),
-         epochs=args.epochs, batch_size=args.batch_size,
-         center_crop_size=args.center_crop_size, image_size=args.image_size,
-         num_workers=args.num_workers)
+    print("attorch run:")
+    main(
+        partial(model_cls, use_attorch=True),
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        center_crop_size=args.center_crop_size,
+        image_size=args.image_size,
+        num_workers=args.num_workers,
+    )
 
-    print('PyTorch run:')
-    main(partial(model_cls, use_attorch=False),
-         epochs=args.epochs, batch_size=args.batch_size,
-         center_crop_size=args.center_crop_size, image_size=args.image_size,
-         num_workers=args.num_workers)
+    print("PyTorch run:")
+    main(
+        partial(model_cls, use_attorch=False),
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        center_crop_size=args.center_crop_size,
+        image_size=args.image_size,
+        num_workers=args.num_workers,
+    )

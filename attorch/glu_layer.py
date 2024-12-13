@@ -3,7 +3,6 @@ Gated linear unit layer with arbitrary activation functions
 with PyTorch autodiff support.
 """
 
-
 from typing import Optional, Tuple
 
 import torch
@@ -20,14 +19,15 @@ class GLUAutoGrad(torch.autograd.Function):
     """
     Autodiff for gated linear unit.
     """
+
     @staticmethod
-    @custom_fwd(device_type='cuda')
+    @custom_fwd(device_type="cuda")
     def forward(
         ctx: Context,
         input: Tensor,
         dim: int,
         act_func: str,
-        ) -> Tensor:
+    ) -> Tensor:
         """
         Applies the gated linear unit with an arbitrary activation function
         to the input.
@@ -49,9 +49,9 @@ class GLUAutoGrad(torch.autograd.Function):
             with an arbitrary activation function.
         """
         param = None
-        if '_' in act_func:
-            comps = act_func.split('_')
-            act_func = '_'.join(comps[:-1])
+        if "_" in act_func:
+            comps = act_func.split("_")
+            act_func = "_".join(comps[:-1])
             param = float(comps[-1])
 
         input1, input2 = input.chunk(2, dim=dim)
@@ -71,17 +71,17 @@ class GLUAutoGrad(torch.autograd.Function):
 
         # Launches 1D grid where each program operates over
         # BLOCK_SIZE elements.
-        grid = lambda META: (cdiv(size, META['BLOCK_SIZE']),)
+        grid = lambda META: (cdiv(size, META["BLOCK_SIZE"]),)
         glu_forward_kernel[grid](input1, input2, output, size, param, act_func)
 
         return output
 
     @staticmethod
-    @custom_bwd(device_type='cuda')
+    @custom_bwd(device_type="cuda")
     def backward(
         ctx: Context,
         output_grad: Tensor,
-        ) -> Tuple[Optional[Tensor], ...]:
+    ) -> Tuple[Optional[Tensor], ...]:
         """
         Calculates the input gradient of the gated linear unit.
 
@@ -99,10 +99,17 @@ class GLUAutoGrad(torch.autograd.Function):
 
         # Launches 1D grid where each program operates over
         # BLOCK_SIZE elements.
-        grid = lambda META: (cdiv(ctx.size, META['BLOCK_SIZE']),)
-        glu_backward_kernel[grid](output_grad, input1, input2,
-                                  input1_grad, input2_grad,
-                                  ctx.size, ctx.param, ctx.act_func)
+        grid = lambda META: (cdiv(ctx.size, META["BLOCK_SIZE"]),)
+        glu_backward_kernel[grid](
+            output_grad,
+            input1,
+            input2,
+            input1_grad,
+            input2_grad,
+            ctx.size,
+            ctx.param,
+            ctx.act_func,
+        )
 
         # Pads output with None because a gradient is necessary for
         # all input arguments.
@@ -124,7 +131,8 @@ class GLU(nn.GLU):
             case of parameterized activation functions (e.g., 'leaky_relu_0.01'
             for leaky ReLU with a negative slope of 0.01).
     """
-    def __init__(self, dim: int = -1, act_func: str = 'sigmoid') -> None:
+
+    def __init__(self, dim: int = -1, act_func: str = "sigmoid") -> None:
         super().__init__(dim)
         self.act_func = act_func
 

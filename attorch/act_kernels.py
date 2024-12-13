@@ -2,7 +2,6 @@
 Kernels for activation functions with fused dropout.
 """
 
-
 import triton
 import triton.language as tl
 
@@ -21,7 +20,7 @@ def sigmoid(input):
     Returns:
         Input transformed by sigmoid.
     """
-    return (1 / (1 + tl.exp(-input)))
+    return 1 / (1 + tl.exp(-input))
 
 
 @triton.jit
@@ -124,7 +123,7 @@ def gelu_grad(input):
     """
     cdf = 0.5 * (1 + tl.math.erf(0.707106781 * input))
     cdf_grad = 0.39894228 * tl.exp(-0.5 * input * input)
-    return (cdf_grad * input + cdf)
+    return cdf_grad * input + cdf
 
 
 @triton.jit
@@ -138,7 +137,7 @@ def silu(input):
     Returns:
         Input transformed by SiLU.
     """
-    return (input * sigmoid(input))
+    return input * sigmoid(input)
 
 
 @triton.jit
@@ -153,7 +152,7 @@ def silu_grad(input):
         Gradient of SiLU.
     """
     output_sigmoid = sigmoid(input)
-    return (output_sigmoid * (input * (1 - output_sigmoid) + 1))
+    return output_sigmoid * (input * (1 - output_sigmoid) + 1)
 
 
 @triton.jit
@@ -253,8 +252,7 @@ def selu(input):
     """
     scale = 1.0507009873554804934193349852946
     alpha = 1.6732632423543772848170429916717
-    return scale * (tl.maximum(0, input) +
-                    tl.minimum(0, alpha * (tl.exp(input) - 1)))
+    return scale * (tl.maximum(0, input) + tl.minimum(0, alpha * (tl.exp(input) - 1)))
 
 
 @triton.jit
@@ -300,8 +298,11 @@ def mish_grad(input):
     """
     exp = tl.exp(input)
     delta = exp * (exp + 2) + 2
-    return (exp * (exp * ((4 * input + 6) + exp * (exp + 4)) + 4 * (input + 1)) /
-            (delta * delta))
+    return (
+        exp
+        * (exp * ((4 * input + 6) + exp * (exp + 4)) + 4 * (input + 1))
+        / (delta * delta)
+    )
 
 
 @triton.jit
@@ -335,8 +336,9 @@ def leaky_relu_grad(input, negative_slope):
 
 
 @triton.jit
-def apply_act_func(input, drop_p, seed, offset, param,
-                   act_func: tl.constexpr, dropout: tl.constexpr):
+def apply_act_func(
+    input, drop_p, seed, offset, param, act_func: tl.constexpr, dropout: tl.constexpr
+):
     """
     Applies an activation function to the input, optionally fusing dropout.
 
@@ -355,43 +357,43 @@ def apply_act_func(input, drop_p, seed, offset, param,
         Input transformed by the desired activation function,
         potentially with fused dropout.
     """
-    if act_func == 'sigmoid':
+    if act_func == "sigmoid":
         input = input.to(tl.float32)
         output = sigmoid(input)
 
-    elif act_func == 'tanh':
+    elif act_func == "tanh":
         input = input.to(tl.float32)
         output = tanh(input)
 
-    elif act_func == 'relu':
+    elif act_func == "relu":
         output = relu(input)
 
-    elif act_func == 'gelu':
+    elif act_func == "gelu":
         input = input.to(tl.float32)
         output = gelu(input)
 
-    elif act_func == 'silu':
+    elif act_func == "silu":
         input = input.to(tl.float32)
         output = silu(input)
 
-    elif act_func == 'relu6':
+    elif act_func == "relu6":
         output = relu6(input)
 
-    elif act_func == 'hardsigmoid':
+    elif act_func == "hardsigmoid":
         output = hardsigmoid(input)
 
-    elif act_func == 'hardswish':
+    elif act_func == "hardswish":
         output = hardswish(input)
 
-    elif act_func == 'selu':
+    elif act_func == "selu":
         input = input.to(tl.float32)
         output = selu(input)
 
-    elif act_func == 'mish':
+    elif act_func == "mish":
         input = input.to(tl.float32)
         output = mish(input)
 
-    elif act_func == 'leaky_relu':
+    elif act_func == "leaky_relu":
         output = leaky_relu(input, param)
 
     if dropout:
@@ -401,8 +403,16 @@ def apply_act_func(input, drop_p, seed, offset, param,
 
 
 @triton.jit
-def apply_act_func_grad(output_grad, input, drop_p, seed, offset, param,
-                        act_func: tl.constexpr, dropout: tl.constexpr):
+def apply_act_func_grad(
+    output_grad,
+    input,
+    drop_p,
+    seed,
+    offset,
+    param,
+    act_func: tl.constexpr,
+    dropout: tl.constexpr,
+):
     """
     Calculates the gradient of an activation function.
 
@@ -422,43 +432,43 @@ def apply_act_func_grad(output_grad, input, drop_p, seed, offset, param,
     Returns:
         Gradient of the desired activation function.
     """
-    if act_func == 'sigmoid':
+    if act_func == "sigmoid":
         input = input.to(tl.float32)
         output = sigmoid_grad(input)
 
-    elif act_func == 'tanh':
+    elif act_func == "tanh":
         input = input.to(tl.float32)
         output = tanh_grad(input)
 
-    elif act_func == 'relu':
+    elif act_func == "relu":
         output = relu_grad(input)
 
-    elif act_func == 'gelu':
+    elif act_func == "gelu":
         input = input.to(tl.float32)
         output = gelu_grad(input)
 
-    elif act_func == 'silu':
+    elif act_func == "silu":
         input = input.to(tl.float32)
         output = silu_grad(input)
 
-    elif act_func == 'relu6':
+    elif act_func == "relu6":
         output = relu6_grad(input)
 
-    elif act_func == 'hardsigmoid':
+    elif act_func == "hardsigmoid":
         output = hardsigmoid_grad(input)
 
-    elif act_func == 'hardswish':
+    elif act_func == "hardswish":
         output = hardswish_grad(input)
 
-    elif act_func == 'selu':
+    elif act_func == "selu":
         input = input.to(tl.float32)
         output = selu_grad(input)
 
-    elif act_func == 'mish':
+    elif act_func == "mish":
         input = input.to(tl.float32)
         output = mish_grad(input)
 
-    elif act_func == 'leaky_relu':
+    elif act_func == "leaky_relu":
         output = leaky_relu_grad(input, param)
 
     if dropout:
@@ -469,15 +479,20 @@ def apply_act_func_grad(output_grad, input, drop_p, seed, offset, param,
 
 @triton.autotune(
     configs=element_wise_kernel_configs(),
-    key=['size'],
+    key=["size"],
 )
 @triton.jit
 def act_func_forward_kernel(
-    input_pointer, output_pointer, size,
-    drop_p, seed, param,
-    act_func: tl.constexpr, dropout: tl.constexpr,
+    input_pointer,
+    output_pointer,
+    size,
+    drop_p,
+    seed,
+    param,
+    act_func: tl.constexpr,
+    dropout: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
-    ):
+):
     """
     Applies an activation function to the input, optionally fusing dropout.
 
@@ -502,23 +517,30 @@ def act_func_forward_kernel(
     mask = offset < size
 
     input = tl.load(input_pointer + offset, mask=mask)
-    tl.store(output_pointer + offset,
-             apply_act_func(input, drop_p, seed, offset,
-                            param, act_func, dropout),
-             mask=mask)
+    tl.store(
+        output_pointer + offset,
+        apply_act_func(input, drop_p, seed, offset, param, act_func, dropout),
+        mask=mask,
+    )
 
 
 @triton.autotune(
     configs=element_wise_kernel_configs(),
-    key=['size'],
+    key=["size"],
 )
 @triton.jit
 def act_func_backward_kernel(
-    output_grad_pointer, input_pointer, input_grad_pointer, size,
-    drop_p, seed, param,
-    act_func: tl.constexpr, dropout: tl.constexpr,
+    output_grad_pointer,
+    input_pointer,
+    input_grad_pointer,
+    size,
+    drop_p,
+    seed,
+    param,
+    act_func: tl.constexpr,
+    dropout: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
-    ):
+):
     """
     Calculates the input gradient of an activation function.
 
@@ -547,7 +569,10 @@ def act_func_backward_kernel(
     output_grad = tl.load(output_grad_pointer + offset, mask=mask)
     input = tl.load(input_pointer + offset, mask=mask)
 
-    tl.store(input_grad_pointer + offset,
-             apply_act_func_grad(output_grad, input, drop_p, seed,
-                                 offset, param, act_func, dropout),
-             mask=mask)
+    tl.store(
+        input_grad_pointer + offset,
+        apply_act_func_grad(
+            output_grad, input, drop_p, seed, offset, param, act_func, dropout
+        ),
+        mask=mask,
+    )

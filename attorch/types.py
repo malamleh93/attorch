@@ -2,7 +2,6 @@
 Type aliases for certain objects.
 """
 
-
 from typing import Any, Optional, Union
 
 import torch

@@ -2,7 +2,6 @@
 Kernels for dropout.
 """
 
-
 import triton
 import triton.language as tl
 
@@ -48,14 +47,17 @@ def apply_dropout_grad(output_grad, drop_p, seed, offset):
 
 @triton.autotune(
     configs=element_wise_kernel_configs(),
-    key=['size'],
+    key=["size"],
 )
 @triton.jit
 def dropout_forward_kernel(
-    input_pointer, output_pointer, size,
-    drop_p, seed,
+    input_pointer,
+    output_pointer,
+    size,
+    drop_p,
+    seed,
     BLOCK_SIZE: tl.constexpr,
-    ):
+):
     """
     Randomly zeroes elements in the input.
 
@@ -81,14 +83,17 @@ def dropout_forward_kernel(
 
 @triton.autotune(
     configs=element_wise_kernel_configs(),
-    key=['size'],
+    key=["size"],
 )
 @triton.jit
 def dropout_backward_kernel(
-    output_grad_pointer, input_grad_pointer, size,
-    drop_p, seed,
+    output_grad_pointer,
+    input_grad_pointer,
+    size,
+    drop_p,
+    seed,
     BLOCK_SIZE: tl.constexpr,
-    ):
+):
     """
     Calculates the input gradient of dropout.
 

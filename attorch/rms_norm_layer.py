@@ -2,7 +2,6 @@
 Root mean square normalization with PyTorch autodiff support.
 """
 
-
 from typing import Optional, Tuple
 
 import torch
@@ -20,14 +19,15 @@ class RMSNormAutoGrad(torch.autograd.Function):
     """
     Autodiff for root mean square normalization.
     """
+
     @staticmethod
-    @custom_fwd(device_type='cuda')
+    @custom_fwd(device_type="cuda")
     def forward(
         ctx: Context,
         input: Tensor,
         weight: Optional[Tensor] = None,
         eps: Optional[float] = None,
-        ) -> Tensor:
+    ) -> Tensor:
         """
         Root-mean-square-normalizes the input.
 
@@ -52,26 +52,31 @@ class RMSNormAutoGrad(torch.autograd.Function):
         output = torch.empty_like(flattened_input)
 
         scale_by_weight = weight is not None
-        requires_grad = (input.requires_grad or
-                         (scale_by_weight and weight.requires_grad))
+        requires_grad = input.requires_grad or (
+            scale_by_weight and weight.requires_grad
+        )
 
         if requires_grad:
-            inv_rms = torch.empty(batch_dim,
-                                  device=input.device,
-                                  dtype=torch.float32)
+            inv_rms = torch.empty(batch_dim, device=input.device, dtype=torch.float32)
 
         else:
             inv_rms = None
 
         # Launches 1D grid where each program operates over BLOCK_SIZE_BATCH rows.
-        grid = lambda META: (cdiv(batch_dim, META['BLOCK_SIZE_BATCH']),)
-        rms_norm_forward_kernel[grid](flattened_input, weight,
-                                      inv_rms, output,
-                                      batch_dim, feat_dim,
-                                      *flattened_input.stride(), *output.stride(),
-                                      eps,
-                                      scale_by_weight=scale_by_weight,
-                                      save_stats=requires_grad)
+        grid = lambda META: (cdiv(batch_dim, META["BLOCK_SIZE_BATCH"]),)
+        rms_norm_forward_kernel[grid](
+            flattened_input,
+            weight,
+            inv_rms,
+            output,
+            batch_dim,
+            feat_dim,
+            *flattened_input.stride(),
+            *output.stride(),
+            eps,
+            scale_by_weight=scale_by_weight,
+            save_stats=requires_grad
+        )
 
         ctx.scale_by_weight = scale_by_weight
         if requires_grad:
@@ -80,11 +85,11 @@ class RMSNormAutoGrad(torch.autograd.Function):
         return output.view_as(input)
 
     @staticmethod
-    @custom_bwd(device_type='cuda')
+    @custom_bwd(device_type="cuda")
     def backward(
         ctx: Context,
         output_grad: Tensor,
-        ) -> Tuple[Optional[Tensor], ...]:
+    ) -> Tuple[Optional[Tensor], ...]:
         """
         Calculates the input gradient of root mean square normalization.
 
@@ -104,27 +109,35 @@ class RMSNormAutoGrad(torch.autograd.Function):
         input_grad = torch.empty_like(flattened_output_grad)
 
         if scale_by_weight:
-            BLOCK_SIZE_BATCH = BLOCK_SIZE_BATCH_heuristic({'batch_dim': batch_dim,
-                                                           'feat_dim': feat_dim})
+            BLOCK_SIZE_BATCH = BLOCK_SIZE_BATCH_heuristic(
+                {"batch_dim": batch_dim, "feat_dim": feat_dim}
+            )
             out_batch_dim = batch_dim // BLOCK_SIZE_BATCH
 
-            weight_grad = torch.empty((out_batch_dim, feat_dim),
-                                      device=flattened_input.device)
+            weight_grad = torch.empty(
+                (out_batch_dim, feat_dim), device=flattened_input.device
+            )
 
         else:
             weight_grad = None
 
         # Launches 1D grid where each program operates over BLOCK_SIZE_BATCH rows.
-        grid = lambda META: (cdiv(batch_dim, META['BLOCK_SIZE_BATCH']),)
-        rms_norm_backward_kernel[grid](flattened_output_grad, flattened_input,
-                                       inv_rms, weight,
-                                       input_grad, weight_grad,
-                                       batch_dim, feat_dim,
-                                       *flattened_output_grad.stride(),
-                                       *flattened_input.stride(),
-                                       *input_grad.stride(),
-                                       *weight_grad.stride() if scale_by_weight else (1, 1),
-                                       scale_by_weight=scale_by_weight)
+        grid = lambda META: (cdiv(batch_dim, META["BLOCK_SIZE_BATCH"]),)
+        rms_norm_backward_kernel[grid](
+            flattened_output_grad,
+            flattened_input,
+            inv_rms,
+            weight,
+            input_grad,
+            weight_grad,
+            batch_dim,
+            feat_dim,
+            *flattened_output_grad.stride(),
+            *flattened_input.stride(),
+            *input_grad.stride(),
+            *weight_grad.stride() if scale_by_weight else (1, 1),
+            scale_by_weight=scale_by_weight
+        )
 
         if scale_by_weight:
             weight_grad = weight_grad.sum(dim=0)
@@ -151,16 +164,17 @@ class RMSNorm(nn.RMSNorm):
     Raises:
         RuntimeError: Normalized shape was not an integer.
     """
+
     def __init__(
         self,
         normalized_shape: int,
         eps: Optional[float] = None,
         elementwise_affine: bool = True,
-        device: Device = 'cuda',
+        device: Device = "cuda",
         dtype: torch.dtype = torch.float32,
-        ) -> None:
+    ) -> None:
         if not isinstance(normalized_shape, int):
-            raise RuntimeError('Normalized shape must be an integer.')
+            raise RuntimeError("Normalized shape must be an integer.")
 
         super().__init__(normalized_shape, eps, elementwise_affine, device, dtype)
 

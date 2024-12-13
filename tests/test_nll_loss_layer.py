@@ -8,33 +8,36 @@ import attorch
 from .utils import assert_close, create_input, create_input_like, default_shapes
 
 
-@pytest.mark.parametrize('input_shape', default_shapes(min_dim=2))
-@pytest.mark.parametrize('reduction', ['none', 'mean', 'sum'])
-@pytest.mark.parametrize('weighted', [False, True])
-@pytest.mark.parametrize('input_dtype', [torch.float32, torch.float16])
-@pytest.mark.parametrize('amp', [False, True])
+@pytest.mark.parametrize("input_shape", default_shapes(min_dim=2))
+@pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+@pytest.mark.parametrize("weighted", [False, True])
+@pytest.mark.parametrize("input_dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("amp", [False, True])
 def test_nll_loss_layer(
     input_shape: Tuple[int, ...],
     reduction: str,
     weighted: bool,
     input_dtype: bool,
     amp: bool,
-    ) -> None:
+) -> None:
     if input_dtype is torch.float16 and not amp:
         return
 
     attorch_input = create_input(input_shape)
     pytorch_input = create_input(input_shape)
-    target = torch.randint(0, input_shape[1],
-                           size=(input_shape[0], *input_shape[2:]),
-                           device='cuda')
-    weight = (torch.randn(input_shape[1], device='cuda', dtype=torch.float32)
-              if weighted else None)
+    target = torch.randint(
+        0, input_shape[1], size=(input_shape[0], *input_shape[2:]), device="cuda"
+    )
+    weight = (
+        torch.randn(input_shape[1], device="cuda", dtype=torch.float32)
+        if weighted
+        else None
+    )
 
     attorch_loss = attorch.NLLLoss(reduction=reduction, weight=weight)
     pytorch_loss = nn.NLLLoss(reduction=reduction, weight=weight)
 
-    with autocast('cuda', enabled=amp):
+    with autocast("cuda", enabled=amp):
         attorch_output = attorch_loss(attorch_input, target)
         pytorch_output = pytorch_loss(pytorch_input, target)
 

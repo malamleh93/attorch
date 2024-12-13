@@ -2,7 +2,6 @@
 Pure math operations to be performed on loaded Triton tensors.
 """
 
-
 import triton
 import triton.language as tl
 
@@ -10,8 +9,7 @@ from .act_kernels import apply_act_func
 
 
 @triton.jit
-def accum_linear(accum, input1, input2,
-                 fp16: tl.constexpr, tf32: tl.constexpr):
+def accum_linear(accum, input1, input2, fp16: tl.constexpr, tf32: tl.constexpr):
     """
     Accumulates matrix multiplications of input tensors for linear functions.
 
@@ -60,8 +58,7 @@ def glu(input1, input2, param, act_func: tl.constexpr):
 
 
 @triton.jit
-def softmax(input,
-            log: tl.constexpr):
+def softmax(input, log: tl.constexpr):
     """
     Normalizes the input using softmax along the last dimension.
 
@@ -89,8 +86,7 @@ def softmax(input,
 
 
 @triton.jit
-def calc_mean_and_inv_std(input, last_dim, eps,
-                          last_dim_mask: tl.constexpr):
+def calc_mean_and_inv_std(input, last_dim, eps, last_dim_mask: tl.constexpr):
     """
     Calculates the mean and inverse standard deviation of the input
     along the last dimension.
@@ -118,8 +114,9 @@ def calc_mean_and_inv_std(input, last_dim, eps,
 
 
 @triton.jit
-def update_welford(input, prev_count, prev_mean, prev_var, curr_count,
-                   mask: tl.constexpr):
+def update_welford(
+    input, prev_count, prev_mean, prev_var, curr_count, mask: tl.constexpr
+):
     """
     Updates count, mean, and variance (M2) statistics for Welford's algorithm.
 
@@ -140,7 +137,7 @@ def update_welford(input, prev_count, prev_mean, prev_var, curr_count,
 
     count = prev_count + curr_count
     mean = (tl.sum(input) - curr_count * prev_mean) / count
-    deltas = tl.where(mask, (input - mean) * (input - prev_mean), 0.)
+    deltas = tl.where(mask, (input - mean) * (input - prev_mean), 0.0)
     var = prev_var + tl.sum(deltas)
 
     return count, mean, var
@@ -182,8 +179,7 @@ def standardize(input, mean, inv_std, weight, bias):
 
 
 @triton.jit
-def calc_p_loss(input, target, size,
-                p_loss: tl.constexpr, reduction: tl.constexpr):
+def calc_p_loss(input, target, size, p_loss: tl.constexpr, reduction: tl.constexpr):
     """
     Measures the L1 or squared L2 norm of the difference between the input
     and target (i.e., mean absolute error or mean squared error).
@@ -215,21 +211,20 @@ def calc_p_loss(input, target, size,
     elif p_loss == 2:
         error = diff * diff
 
-    if reduction == 'none':
+    if reduction == "none":
         output = error
 
-    elif reduction == 'mean':
+    elif reduction == "mean":
         output = tl.sum(error) / size
 
-    elif reduction == 'sum':
+    elif reduction == "sum":
         output = tl.sum(error)
 
     return output
 
 
 @triton.jit
-def nll_loss(input, size,
-             reduction: tl.constexpr):
+def nll_loss(input, size, reduction: tl.constexpr):
     """
     Measures the negative log likelihood loss given log-probabilities of target class.
 
@@ -247,13 +242,13 @@ def nll_loss(input, size,
     """
     input = input.to(tl.float32)
 
-    if reduction == 'none':
+    if reduction == "none":
         output = -input
 
-    elif reduction == 'mean':
+    elif reduction == "mean":
         output = -tl.sum(input) / size
 
-    elif reduction == 'sum':
+    elif reduction == "sum":
         output = -tl.sum(input)
 
     return output

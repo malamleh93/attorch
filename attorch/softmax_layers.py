@@ -2,7 +2,6 @@
 Softmax and related layers with PyTorch autodiff support.
 """
 
-
 from typing import Optional, Tuple
 
 import torch
@@ -19,12 +18,13 @@ class SoftmaxAutoGrad(torch.autograd.Function):
     """
     Autodiff for softmax and related functions.
     """
+
     @staticmethod
     def forward(
         ctx: Context,
         input: Tensor,
         log: bool,
-        ) -> Tensor:
+    ) -> Tensor:
         """
         Normalizes the input using softmax.
 
@@ -41,14 +41,20 @@ class SoftmaxAutoGrad(torch.autograd.Function):
         flattened_input = flattened_input.flatten(0, -2)
         batch_dim, feat_dim = flattened_input.shape
 
-        output_dtype = get_output_dtype(input.dtype, autocast='fp32')
+        output_dtype = get_output_dtype(input.dtype, autocast="fp32")
         output = torch.empty_like(flattened_input, dtype=output_dtype)
 
         # Launches 1D grid where each program operates over BLOCK_SIZE_BATCH rows.
-        grid = lambda META: (cdiv(batch_dim, META['BLOCK_SIZE_BATCH']),)
-        softmax_forward_kernel[grid](flattened_input, output, batch_dim, feat_dim,
-                                     *flattened_input.stride(), *output.stride(),
-                                     log=log)
+        grid = lambda META: (cdiv(batch_dim, META["BLOCK_SIZE_BATCH"]),)
+        softmax_forward_kernel[grid](
+            flattened_input,
+            output,
+            batch_dim,
+            feat_dim,
+            *flattened_input.stride(),
+            *output.stride(),
+            log=log,
+        )
 
         ctx.log = log
         if input.requires_grad:
@@ -60,7 +66,7 @@ class SoftmaxAutoGrad(torch.autograd.Function):
     def backward(
         ctx: Context,
         output_grad: Tensor,
-        ) -> Tuple[Optional[Tensor], ...]:
+    ) -> Tuple[Optional[Tensor], ...]:
         """
         Calculates the input gradient of softmax.
 
@@ -79,12 +85,18 @@ class SoftmaxAutoGrad(torch.autograd.Function):
         input_grad = torch.empty_like(output)
 
         # Launches 1D grid where each program operates over BLOCK_SIZE_BATCH rows.
-        grid = lambda META: (cdiv(batch_dim, META['BLOCK_SIZE_BATCH']),)
-        softmax_backward_kernel[grid](flattened_output_grad, output, input_grad,
-                                      batch_dim, feat_dim,
-                                      *flattened_output_grad.stride(),
-                                      *output.stride(), *input_grad.stride(),
-                                      log=ctx.log)
+        grid = lambda META: (cdiv(batch_dim, META["BLOCK_SIZE_BATCH"]),)
+        softmax_backward_kernel[grid](
+            flattened_output_grad,
+            output,
+            input_grad,
+            batch_dim,
+            feat_dim,
+            *flattened_output_grad.stride(),
+            *output.stride(),
+            *input_grad.stride(),
+            log=ctx.log,
+        )
 
         # Pads output with None because a gradient is necessary for
         # all input arguments.
@@ -100,9 +112,10 @@ class Softmax(nn.Softmax):
         dim: Dimension along which softmax will be computed.
             Only softmax along the last dimension is supported.
     """
+
     def forward(self, input: Tensor) -> Tensor:
         if self.dim != -1 and self.dim != input.ndim - 1:
-            raise RuntimeError(f'Only softmax along the last dimension is supported.')
+            raise RuntimeError(f"Only softmax along the last dimension is supported.")
 
         return SoftmaxAutoGrad.apply(input, False)
 
@@ -116,9 +129,10 @@ class LogSoftmax(nn.LogSoftmax):
         dim: Dimension along which softmax will be computed.
             Only softmax along the last dimension is supported.
     """
+
     def forward(self, input: Tensor) -> Tensor:
         if self.dim != -1 and self.dim != input.ndim - 1:
-            raise RuntimeError(f'Only softmax along the last dimension is supported.')
+            raise RuntimeError(f"Only softmax along the last dimension is supported.")
 
         return SoftmaxAutoGrad.apply(input, True)
 
@@ -132,8 +146,9 @@ class Softmin(nn.Softmin):
         dim: Dimension along which softmin will be computed.
             Only softmin along the last dimension is supported.
     """
+
     def forward(self, input: Tensor) -> Tensor:
         if self.dim != -1 and self.dim != input.ndim - 1:
-            raise RuntimeError(f'Only softmin along the last dimension is supported.')
+            raise RuntimeError(f"Only softmin along the last dimension is supported.")
 
         return SoftmaxAutoGrad.apply(-input, False)

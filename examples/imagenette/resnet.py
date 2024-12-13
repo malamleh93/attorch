@@ -2,13 +2,13 @@
 ResNet for classification.
 """
 
-
 from typing import Optional, Tuple
 
 from torch import Tensor
 from torch import nn
 
 import attorch
+from attorch import nn as nn_attorch
 
 
 class ConvBNReLU(nn.Module):
@@ -26,6 +26,7 @@ class ConvBNReLU(nn.Module):
             If None, it is set to half the kernel size, rounded down.
         relu: Flag for appending ReLU after batch normalization.
     """
+
     def __init__(
         self,
         use_attorch: bool,
@@ -35,18 +36,30 @@ class ConvBNReLU(nn.Module):
         stride: int = 1,
         padding: Optional[int] = None,
         relu: bool = True,
-        ) -> None:
+    ) -> None:
         super().__init__()
         self.use_attorch = use_attorch
 
-        self.conv = nn.Conv2d(in_dim, out_dim, kernel_size,
-                              bias=False, stride=stride,
-                              padding=padding or kernel_size // 2)
-
         if use_attorch:
-            self.bn = attorch.BatchNorm2d(out_dim, act_func='relu' if relu else None)
+            self.conv = nn_attorch.Conv2d(
+                in_dim,
+                out_dim,
+                kernel_size,
+                bias=False,
+                stride=stride,
+                padding=padding or kernel_size // 2,
+            )
+            self.bn = attorch.BatchNorm2d(out_dim, act_func="relu" if relu else None)
 
         else:
+            self.conv = nn.Conv2d(
+                in_dim,
+                out_dim,
+                kernel_size,
+                bias=False,
+                stride=stride,
+                padding=padding or kernel_size // 2,
+            )
             self.bn = nn.BatchNorm2d(out_dim)
             self.relu = nn.ReLU() if relu else nn.Identity()
 
@@ -54,7 +67,7 @@ class ConvBNReLU(nn.Module):
         self,
         input: Tensor,
         pre_act_add: Optional[Tensor] = None,
-        ) -> Tensor:
+    ) -> Tensor:
         output = self.conv(input)
 
         if self.use_attorch:
@@ -81,6 +94,7 @@ class BottleneckBlock(nn.Module):
         expansion_factor: Factor by which the bottleneck dimension is expanded
             to generate the output.
     """
+
     def __init__(
         self,
         use_attorch: bool,
@@ -88,19 +102,21 @@ class BottleneckBlock(nn.Module):
         bottleneck_dim: int,
         stride: int = 1,
         expansion_factor: int = 4,
-        ) -> None:
+    ) -> None:
         super().__init__()
 
         out_dim = expansion_factor * bottleneck_dim
         self.conv_bn_relu1 = ConvBNReLU(use_attorch, in_dim, bottleneck_dim)
-        self.conv_bn_relu2 = ConvBNReLU(use_attorch, bottleneck_dim, bottleneck_dim,
-                                        kernel_size=3, stride=stride)
+        self.conv_bn_relu2 = ConvBNReLU(
+            use_attorch, bottleneck_dim, bottleneck_dim, kernel_size=3, stride=stride
+        )
         self.conv_bn_relu3 = ConvBNReLU(use_attorch, bottleneck_dim, out_dim)
 
         self.downsample = nn.Identity()
         if in_dim != out_dim or stride != 1:
-            self.downsample = ConvBNReLU(use_attorch, in_dim, out_dim,
-                                         stride=stride, relu=False)
+            self.downsample = ConvBNReLU(
+                use_attorch, in_dim, out_dim, stride=stride, relu=False
+            )
 
     def forward(self, input: Tensor) -> Tensor:
         output = self.conv_bn_relu1(input)
@@ -116,7 +132,7 @@ def resnet_stage(
     bottleneck_dim: int,
     stride: int = 1,
     expansion_factor: int = 4,
-    ) -> nn.Sequential:
+) -> nn.Sequential:
     """
     Creates a ResNet stage consisting of bottleneck blocks.
 
@@ -131,9 +147,15 @@ def resnet_stage(
     """
     layer = nn.Sequential()
     for ind in range(depth):
-        layer.append(BottleneckBlock(use_attorch, in_dim, bottleneck_dim,
-                                     stride=stride if ind > 0 else 1,
-                                     expansion_factor=expansion_factor))
+        layer.append(
+            BottleneckBlock(
+                use_attorch,
+                in_dim,
+                bottleneck_dim,
+                stride=stride if ind > 0 else 1,
+                expansion_factor=expansion_factor,
+            )
+        )
         in_dim = expansion_factor * bottleneck_dim
     return layer
 
@@ -148,21 +170,24 @@ class ResNet(nn.Module):
         depths: Depths of the network's 4 stages.
         num_classes: Number of output classes.
     """
+
     def __init__(
         self,
         use_attorch: bool,
         depths: Tuple[int, int, int, int],
         num_classes: int = 1000,
-        ) -> None:
-        assert len(depths) == 4, \
-            f'ResNet consists of 4 stages, received {len(depths)} depths instead'
+    ) -> None:
+        assert (
+            len(depths) == 4
+        ), f"ResNet consists of 4 stages, received {len(depths)} depths instead"
 
         super().__init__()
         backend = attorch if use_attorch else nn
 
-        self.stem = nn.Sequential(ConvBNReLU(use_attorch, 3, 64,
-                                             kernel_size=7, stride=2),
-                                  nn.MaxPool2d(kernel_size=3, stride=2, padding=1))
+        self.stem = nn.Sequential(
+            ConvBNReLU(use_attorch, 3, 64, kernel_size=7, stride=2),
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+        )
         self.stage1 = resnet_stage(use_attorch, depths[0], 64, 64)
         self.stage2 = resnet_stage(use_attorch, depths[1], 256, 128, stride=2)
         self.stage3 = resnet_stage(use_attorch, depths[1], 512, 256, stride=2)
@@ -175,7 +200,7 @@ class ResNet(nn.Module):
         self,
         input: Tensor,
         target: Optional[Tensor] = None,
-        ) -> Tensor:
+    ) -> Tensor:
         output = self.stem(input)
 
         output = self.stage1(output)

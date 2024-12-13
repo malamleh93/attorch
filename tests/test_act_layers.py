@@ -8,20 +8,33 @@ import attorch
 from .utils import assert_close, create_input, create_input_like, default_shapes
 
 
-@pytest.mark.parametrize('shape', default_shapes())
-@pytest.mark.parametrize('act_func', ['Sigmoid', 'Tanh', 'ReLU', 'GELU', 'SiLU',
-                                      'ReLU6', 'Hardsigmoid', 'Hardswish', 'SELU',
-                                      'Mish', 'LeakyReLU'])
-@pytest.mark.parametrize('drop_p', [0.0, 0.5])
-@pytest.mark.parametrize('input_dtype', [torch.float32, torch.float16])
-@pytest.mark.parametrize('amp', [False, True])
+@pytest.mark.parametrize("shape", default_shapes())
+@pytest.mark.parametrize(
+    "act_func",
+    [
+        "Sigmoid",
+        "Tanh",
+        "ReLU",
+        "GELU",
+        "SiLU",
+        "ReLU6",
+        "Hardsigmoid",
+        "Hardswish",
+        "SELU",
+        "Mish",
+        "LeakyReLU",
+    ],
+)
+@pytest.mark.parametrize("drop_p", [0.0, 0.5])
+@pytest.mark.parametrize("input_dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("amp", [False, True])
 def test_act_layers(
     shape: Tuple[int, ...],
     act_func: str,
     drop_p: float,
     input_dtype: bool,
     amp: bool,
-    ) -> None:
+) -> None:
     if input_dtype is torch.float16 and not amp:
         return
 
@@ -31,7 +44,7 @@ def test_act_layers(
     attorch_act_func = getattr(attorch, act_func)(drop_p=drop_p)
     pytorch_act_func = getattr(nn, act_func)()
 
-    with autocast('cuda', enabled=amp):
+    with autocast("cuda", enabled=amp):
         attorch_output = attorch_act_func(attorch_input)
         pytorch_output = pytorch_act_func(pytorch_input)
 

@@ -2,7 +2,6 @@
 Activation function layers with fused dropout with PyTorch autodiff support.
 """
 
-
 import warnings
 from random import randint
 from typing import Optional, Tuple
@@ -21,15 +20,16 @@ class ActFuncAutoGrad(torch.autograd.Function):
     """
     Autodiff for activation functions.
     """
+
     @staticmethod
-    @custom_fwd(device_type='cuda')
+    @custom_fwd(device_type="cuda")
     def forward(
         ctx: Context,
         input: Tensor,
         act_func: str,
         drop_p: float,
         training: bool,
-        ) -> Tensor:
+    ) -> Tensor:
         """
         Applies an activation function to the input, optionally fusing dropout.
 
@@ -53,9 +53,9 @@ class ActFuncAutoGrad(torch.autograd.Function):
             potentially with fused dropout.
         """
         param = None
-        if '_' in act_func:
-            comps = act_func.split('_')
-            act_func = '_'.join(comps[:-1])
+        if "_" in act_func:
+            comps = act_func.split("_")
+            act_func = "_".join(comps[:-1])
             param = float(comps[-1])
 
         ctx.param = param
@@ -73,19 +73,19 @@ class ActFuncAutoGrad(torch.autograd.Function):
 
         # Launches 1D grid where each program operates over
         # BLOCK_SIZE elements.
-        grid = lambda META: (cdiv(size, META['BLOCK_SIZE']),)
-        act_func_forward_kernel[grid](flattened_input, output, size,
-                                      drop_p, seed, param,
-                                      act_func, ctx.dropout)
+        grid = lambda META: (cdiv(size, META["BLOCK_SIZE"]),)
+        act_func_forward_kernel[grid](
+            flattened_input, output, size, drop_p, seed, param, act_func, ctx.dropout
+        )
 
         return output.view_as(input)
 
     @staticmethod
-    @custom_bwd(device_type='cuda')
+    @custom_bwd(device_type="cuda")
     def backward(
         ctx: Context,
         output_grad: Tensor,
-        ) -> Tuple[Optional[Tensor], ...]:
+    ) -> Tuple[Optional[Tensor], ...]:
         """
         Calculates the input gradient of the activation function.
 
@@ -106,10 +106,18 @@ class ActFuncAutoGrad(torch.autograd.Function):
 
         # Launches 1D grid where each program operates over
         # BLOCK_SIZE elements.
-        grid = lambda META: (cdiv(size, META['BLOCK_SIZE']),)
-        act_func_backward_kernel[grid](output_grad, flattened_input, input_grad,
-                                       size, ctx.drop_p, ctx.seed, ctx.param,
-                                       ctx.act_func, ctx.dropout)
+        grid = lambda META: (cdiv(size, META["BLOCK_SIZE"]),)
+        act_func_backward_kernel[grid](
+            output_grad,
+            flattened_input,
+            input_grad,
+            size,
+            ctx.drop_p,
+            ctx.seed,
+            ctx.param,
+            ctx.act_func,
+            ctx.dropout,
+        )
 
         # Pads output with None because a gradient is necessary for
         # all input arguments.
@@ -124,12 +132,13 @@ class Sigmoid(nn.Sigmoid):
     Args:
         drop_p: Probability of dropping an element for dropout.
     """
+
     def __init__(self, drop_p: float = 0.0) -> None:
         super().__init__()
         self.drop_p = drop_p
 
     def forward(self, input: Tensor) -> Tensor:
-        return ActFuncAutoGrad.apply(input, 'sigmoid', self.drop_p, self.training)
+        return ActFuncAutoGrad.apply(input, "sigmoid", self.drop_p, self.training)
 
 
 class Tanh(nn.Tanh):
@@ -140,12 +149,13 @@ class Tanh(nn.Tanh):
     Args:
         drop_p: Probability of dropping an element for dropout.
     """
+
     def __init__(self, drop_p: float = 0.0) -> None:
         super().__init__()
         self.drop_p = drop_p
 
     def forward(self, input: Tensor) -> Tensor:
-        return ActFuncAutoGrad.apply(input, 'tanh', self.drop_p, self.training)
+        return ActFuncAutoGrad.apply(input, "tanh", self.drop_p, self.training)
 
 
 class ReLU(nn.ReLU):
@@ -158,16 +168,19 @@ class ReLU(nn.ReLU):
             as in-place is currently not supported.
         drop_p: Probability of dropping an element for dropout.
     """
+
     def __init__(self, inplace: bool = False, drop_p: float = 0.0) -> None:
         super().__init__(inplace=False)
         self.drop_p = drop_p
 
         if inplace is True:
-            warnings.warn('In-place ReLU currently not supported; '
-                          'falling back to out-of-place.')
+            warnings.warn(
+                "In-place ReLU currently not supported; "
+                "falling back to out-of-place."
+            )
 
     def forward(self, input: Tensor) -> Tensor:
-        return ActFuncAutoGrad.apply(input, 'relu', self.drop_p, self.training)
+        return ActFuncAutoGrad.apply(input, "relu", self.drop_p, self.training)
 
 
 class GELU(nn.GELU):
@@ -178,12 +191,13 @@ class GELU(nn.GELU):
     Args:
         drop_p: Probability of dropping an element for dropout.
     """
+
     def __init__(self, drop_p: float = 0.0) -> None:
         super().__init__()
         self.drop_p = drop_p
 
     def forward(self, input: Tensor) -> Tensor:
-        return ActFuncAutoGrad.apply(input, 'gelu', self.drop_p, self.training)
+        return ActFuncAutoGrad.apply(input, "gelu", self.drop_p, self.training)
 
 
 class SiLU(nn.SiLU):
@@ -196,16 +210,19 @@ class SiLU(nn.SiLU):
             as in-place is currently not supported.
         drop_p: Probability of dropping an element for dropout.
     """
+
     def __init__(self, inplace: bool = False, drop_p: float = 0.0) -> None:
         super().__init__(inplace=False)
         self.drop_p = drop_p
 
         if inplace is True:
-            warnings.warn('In-place SiLU currently not supported; '
-                          'falling back to out-of-place.')
+            warnings.warn(
+                "In-place SiLU currently not supported; "
+                "falling back to out-of-place."
+            )
 
     def forward(self, input: Tensor) -> Tensor:
-        return ActFuncAutoGrad.apply(input, 'silu', self.drop_p, self.training)
+        return ActFuncAutoGrad.apply(input, "silu", self.drop_p, self.training)
 
 
 class ReLU6(nn.ReLU6):
@@ -218,16 +235,19 @@ class ReLU6(nn.ReLU6):
             as in-place is currently not supported.
         drop_p: Probability of dropping an element for dropout.
     """
+
     def __init__(self, inplace: bool = False, drop_p: float = 0.0) -> None:
         super().__init__(inplace=False)
         self.drop_p = drop_p
 
         if inplace is True:
-            warnings.warn('In-place ReLU6 currently not supported; '
-                          'falling back to out-of-place.')
+            warnings.warn(
+                "In-place ReLU6 currently not supported; "
+                "falling back to out-of-place."
+            )
 
     def forward(self, input: Tensor) -> Tensor:
-        return ActFuncAutoGrad.apply(input, 'relu6', self.drop_p, self.training)
+        return ActFuncAutoGrad.apply(input, "relu6", self.drop_p, self.training)
 
 
 class Hardsigmoid(nn.Hardsigmoid):
@@ -240,16 +260,19 @@ class Hardsigmoid(nn.Hardsigmoid):
             as in-place is currently not supported.
         drop_p: Probability of dropping an element for dropout.
     """
+
     def __init__(self, inplace: bool = False, drop_p: float = 0.0) -> None:
         super().__init__(inplace=False)
         self.drop_p = drop_p
 
         if inplace is True:
-            warnings.warn('In-place hard sigmoid currently not supported; '
-                          'falling back to out-of-place.')
+            warnings.warn(
+                "In-place hard sigmoid currently not supported; "
+                "falling back to out-of-place."
+            )
 
     def forward(self, input: Tensor) -> Tensor:
-        return ActFuncAutoGrad.apply(input, 'hardsigmoid', self.drop_p, self.training)
+        return ActFuncAutoGrad.apply(input, "hardsigmoid", self.drop_p, self.training)
 
 
 class Hardswish(nn.Hardswish):
@@ -262,16 +285,19 @@ class Hardswish(nn.Hardswish):
             as in-place is currently not supported.
         drop_p: Probability of dropping an element for dropout.
     """
+
     def __init__(self, inplace: bool = False, drop_p: float = 0.0) -> None:
         super().__init__(inplace=False)
         self.drop_p = drop_p
 
         if inplace is True:
-            warnings.warn('In-place hard Swish currently not supported; '
-                          'falling back to out-of-place.')
+            warnings.warn(
+                "In-place hard Swish currently not supported; "
+                "falling back to out-of-place."
+            )
 
     def forward(self, input: Tensor) -> Tensor:
-        return ActFuncAutoGrad.apply(input, 'hardswish', self.drop_p, self.training)
+        return ActFuncAutoGrad.apply(input, "hardswish", self.drop_p, self.training)
 
 
 class SELU(nn.SELU):
@@ -284,16 +310,19 @@ class SELU(nn.SELU):
             as in-place is currently not supported.
         drop_p: Probability of dropping an element for dropout.
     """
+
     def __init__(self, inplace: bool = False, drop_p: float = 0.0) -> None:
         super().__init__(inplace=False)
         self.drop_p = drop_p
 
         if inplace is True:
-            warnings.warn('In-place SELU currently not supported; '
-                          'falling back to out-of-place.')
+            warnings.warn(
+                "In-place SELU currently not supported; "
+                "falling back to out-of-place."
+            )
 
     def forward(self, input: Tensor) -> Tensor:
-        return ActFuncAutoGrad.apply(input, 'selu', self.drop_p, self.training)
+        return ActFuncAutoGrad.apply(input, "selu", self.drop_p, self.training)
 
 
 class Mish(nn.Mish):
@@ -306,16 +335,19 @@ class Mish(nn.Mish):
             as in-place is currently not supported.
         drop_p: Probability of dropping an element for dropout.
     """
+
     def __init__(self, inplace: bool = False, drop_p: float = 0.0) -> None:
         super().__init__(inplace=False)
         self.drop_p = drop_p
 
         if inplace is True:
-            warnings.warn('In-place Mish currently not supported; '
-                          'falling back to out-of-place.')
+            warnings.warn(
+                "In-place Mish currently not supported; "
+                "falling back to out-of-place."
+            )
 
     def forward(self, input: Tensor) -> Tensor:
-        return ActFuncAutoGrad.apply(input, 'mish', self.drop_p, self.training)
+        return ActFuncAutoGrad.apply(input, "mish", self.drop_p, self.training)
 
 
 class LeakyReLU(nn.LeakyReLU):
@@ -329,21 +361,24 @@ class LeakyReLU(nn.LeakyReLU):
         negative_slope: Slope of the negative component.
         drop_p: Probability of dropping an element for dropout.
     """
+
     def __init__(
         self,
         inplace: bool = False,
         negative_slope: float = 1e-2,
         drop_p: float = 0.0,
-        ) -> None:
+    ) -> None:
         super().__init__(inplace=False)
         self.negative_slope = negative_slope
         self.drop_p = drop_p
 
         if inplace is True:
-            warnings.warn('In-place leaky ReLU currently not supported; '
-                          'falling back to out-of-place.')
+            warnings.warn(
+                "In-place leaky ReLU currently not supported; "
+                "falling back to out-of-place."
+            )
 
     def forward(self, input: Tensor) -> Tensor:
-        return ActFuncAutoGrad.apply(input,
-                                     'leaky_relu_' + str(self.negative_slope),
-                                     self.drop_p, self.training)
+        return ActFuncAutoGrad.apply(
+            input, "leaky_relu_" + str(self.negative_slope), self.drop_p, self.training
+        )

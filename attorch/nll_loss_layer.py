@@ -2,7 +2,6 @@
 Negative log likelihood loss with PyTorch autodiff support.
 """
 
-
 from typing import Optional, Tuple
 
 import torch
@@ -10,8 +9,11 @@ from torch import Tensor
 from torch import nn
 from triton import cdiv
 
-from .nll_loss_kernels import nll_loss_backward_kernel, nll_loss_forward_kernel, \
-    BLOCK_SIZE_BATCH_heuristic
+from .nll_loss_kernels import (
+    nll_loss_backward_kernel,
+    nll_loss_forward_kernel,
+    BLOCK_SIZE_BATCH_heuristic,
+)
 from .types import Context
 from .utils import get_output_dtype
 
@@ -20,6 +22,7 @@ class NLLLossAutoGrad(torch.autograd.Function):
     """
     Autodiff for negative log likelihood loss.
     """
+
     @staticmethod
     def forward(
         ctx: Context,
@@ -27,7 +30,7 @@ class NLLLossAutoGrad(torch.autograd.Function):
         target: Tensor,
         reduction: str,
         weight: Optional[Tensor] = None,
-        ) -> Tensor:
+    ) -> Tensor:
         """
         Measures the negative log likelihood loss between the input and target,
         with optional reweighing of each class.
@@ -49,10 +52,12 @@ class NLLLossAutoGrad(torch.autograd.Function):
         Returns:
             Loss.
         """
-        assert len(input) == len(target) and input.shape[2:] == target.shape[1:], \
-            f'Incompatible input shape ({input.shape}) and target shape ({target.shape})'
-        assert weight is None or len(weight) == input.shape[1], \
-            f'Dimensionality of weight vector ({len(weight)}) and input features ({input.shape[1]}) not equal'
+        assert (
+            len(input) == len(target) and input.shape[2:] == target.shape[1:]
+        ), f"Incompatible input shape ({input.shape}) and target shape ({target.shape})"
+        assert (
+            weight is None or len(weight) == input.shape[1]
+        ), f"Dimensionality of weight vector ({len(weight)}) and input features ({input.shape[1]}) not equal"
 
         flattened_input = input.unsqueeze(-1) if input.ndim == 2 else input
         flattened_input = flattened_input.flatten(2, -1)
@@ -61,31 +66,44 @@ class NLLLossAutoGrad(torch.autograd.Function):
         flattened_target = flattened_target.flatten(1, -1)
 
         batch_dim, _, spatial_dim = flattened_input.shape
-        BLOCK_SIZE_BATCH = BLOCK_SIZE_BATCH_heuristic({'batch_dim': batch_dim,
-                                                       'spatial_dim': spatial_dim})
+        BLOCK_SIZE_BATCH = BLOCK_SIZE_BATCH_heuristic(
+            {"batch_dim": batch_dim, "spatial_dim": spatial_dim}
+        )
         out_batch_dim = batch_dim // BLOCK_SIZE_BATCH
 
-        output_dtype = get_output_dtype(input.dtype, autocast='fp32')
-        sum_weights = (torch.empty(out_batch_dim, dtype=torch.float32, device=input.device)
-                       if reduction == 'mean' else None)
-        output = (torch.empty_like(flattened_target, dtype=output_dtype)
-                  if reduction == 'none' else
-                  torch.empty(out_batch_dim, dtype=output_dtype, device=input.device))
+        output_dtype = get_output_dtype(input.dtype, autocast="fp32")
+        sum_weights = (
+            torch.empty(out_batch_dim, dtype=torch.float32, device=input.device)
+            if reduction == "mean"
+            else None
+        )
+        output = (
+            torch.empty_like(flattened_target, dtype=output_dtype)
+            if reduction == "none"
+            else torch.empty(out_batch_dim, dtype=output_dtype, device=input.device)
+        )
 
         # Launches 1D grid where each program operates over BLOCK_SIZE_BATCH rows.
-        grid = lambda META: (cdiv(len(input), META['BLOCK_SIZE_BATCH']),)
-        nll_loss_forward_kernel[grid](input, target, weight, sum_weights, output,
-                                      batch_dim, spatial_dim,
-                                      *flattened_input.stride(),
-                                      *flattened_target.stride(),
-                                      *output.stride() if reduction == 'none' else (1, 1),
-                                      reduction=reduction,
-                                      weighted=weight is not None)
+        grid = lambda META: (cdiv(len(input), META["BLOCK_SIZE_BATCH"]),)
+        nll_loss_forward_kernel[grid](
+            input,
+            target,
+            weight,
+            sum_weights,
+            output,
+            batch_dim,
+            spatial_dim,
+            *flattened_input.stride(),
+            *flattened_target.stride(),
+            *output.stride() if reduction == "none" else (1, 1),
+            reduction=reduction,
+            weighted=weight is not None,
+        )
 
-        if reduction != 'none':
+        if reduction != "none":
             output = output.sum()
 
-            if reduction == 'mean' and weight is not None:
+            if reduction == "mean" and weight is not None:
                 sum_weights = sum_weights.sum()
                 output /= sum_weights
 
@@ -105,7 +123,7 @@ class NLLLossAutoGrad(torch.autograd.Function):
     def backward(
         ctx: Context,
         output_grad: Tensor,
-        ) -> Tuple[Optional[Tensor], ...]:
+    ) -> Tuple[Optional[Tensor], ...]:
         """
         Calculates the input gradient of the loss.
 
@@ -118,24 +136,34 @@ class NLLLossAutoGrad(torch.autograd.Function):
             Input gradient of the loss.
         """
         (input, flattened_target) = ctx.saved_tensors
-        flattened_input = input.view(len(flattened_target), -1,
-                                     flattened_target.shape[-1])
-        output_grad = (output_grad.view_as(flattened_target)
-                       if output_grad.ndim > 0 else output_grad)
+        flattened_input = input.view(
+            len(flattened_target), -1, flattened_target.shape[-1]
+        )
+        output_grad = (
+            output_grad.view_as(flattened_target)
+            if output_grad.ndim > 0
+            else output_grad
+        )
 
         batch_dim, _, spatial_dim = flattened_input.shape
         input_grad = torch.zeros_like(flattened_input, dtype=ctx.output_dtype)
 
         # Launches 1D grid where each program operates over BLOCK_SIZE_BATCH rows.
-        grid = lambda META: (cdiv(len(input), META['BLOCK_SIZE_BATCH']),)
-        nll_loss_backward_kernel[grid](output_grad, flattened_target, ctx.weight,
-                                       ctx.sum_weights, input_grad,
-                                       batch_dim, spatial_dim,
-                                       *output_grad.stride() if ctx.reduction == 'none' else (1, 1),
-                                       *flattened_target.stride(),
-                                       *input_grad.stride(),
-                                       reduction=ctx.reduction,
-                                       weighted=ctx.weight is not None)
+        grid = lambda META: (cdiv(len(input), META["BLOCK_SIZE_BATCH"]),)
+        nll_loss_backward_kernel[grid](
+            output_grad,
+            flattened_target,
+            ctx.weight,
+            ctx.sum_weights,
+            input_grad,
+            batch_dim,
+            spatial_dim,
+            *output_grad.stride() if ctx.reduction == "none" else (1, 1),
+            *flattened_target.stride(),
+            *input_grad.stride(),
+            reduction=ctx.reduction,
+            weighted=ctx.weight is not None,
+        )
 
         # Pads output with None because a gradient is necessary for
         # all input arguments.
@@ -161,5 +189,6 @@ class NLLLoss(nn.NLLLoss):
                 If provided, must be of shape [feat_dim].
         ignore_index: This argument is not supported.
     """
+
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         return NLLLossAutoGrad.apply(input, target, self.reduction, self.weight)
